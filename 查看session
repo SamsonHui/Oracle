@@ -1,0 +1,46 @@
+  SELECT *
+    FROM (SELECT    'alter system kill session '''
+                 || S.SID
+                 || ','
+                 || S.SERIAL#
+                 || ',@'
+                 || S.INST_ID
+                 || ''';',
+                 S.INST_ID,
+                 S.USERNAME,
+                 SID,
+                 SERIAL#,
+                 STATUS,
+                 MACHINE,
+                 PROGRAM,
+                 LAST_CALL_ET,
+                 PREV_SQL_ID,
+                 S.SQL_ID,
+                 EVENT,
+                 P1,
+                 P2,
+                 BLOCKING_INSTANCE,
+                 BLOCKING_SESSION,
+                 FINAL_BLOCKING_SESSION_STATUS,
+                 FINAL_BLOCKING_INSTANCE,
+                 FINAL_BLOCKING_SESSION,
+                 SQL_FULLTEXT,
+                 SQL_TEXT,
+                 ROW_NUMBER ()
+                 OVER (
+                    PARTITION BY    'alter system kill session '''
+                                 || S.SID
+                                 || ','
+                                 || S.SERIAL#
+                                 || ',@'
+                                 || S.INST_ID
+                                 || ''';'
+                    ORDER BY 1)
+                    RN
+            FROM GV$SESSION S
+                 LEFT JOIN GV$SQL Q ON NVL (S.SQL_ID, S.PREV_SQL_ID) = Q.SQL_ID)
+   WHERE     USERNAME <> UPPER ('SYS')
+         AND STATUS = UPPER ('ACTIVE')
+         AND LAST_CALL_ET > 20
+         AND RN = 1
+ORDER BY LAST_CALL_ET DESC;
