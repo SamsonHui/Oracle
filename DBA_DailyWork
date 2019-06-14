@@ -1,0 +1,40 @@
+select status,tablespace_name,
+CONTENTS,EXTENT_MANAGEMENT,SEGMENT_SPACE_MANAGEMENT,
+       round(max/1024,2) total_sizeG,      
+       round(megs_used/1024,2) used_sizeG,
+       round((megs_used)/(max+0.001) *100,1) used_rate
+from
+(select a.tablespace_name,ts.status,ts.CONTENTS,ts.EXTENT_MANAGEMENT,ts.SEGMENT_SPACE_MANAGEMENT,
+       round(a.bytes_alloc / 1024 / 1024, 2) megs_alloc,
+       round(nvl(b.bytes_free, 0) / 1024 / 1024, 2) megs_free,
+       round((a.bytes_alloc - nvl(b.bytes_free, 0)) / 1024 / 1024, 2) megs_used,
+       round(maxbytes/1048576,2) Max
+from ( select f.tablespace_name,
+               sum(f.bytes) bytes_alloc,
+               sum(decode(f.autoextensible, 'YES',f.maxbytes,'NO', f.bytes)) maxbytes
+        from dba_data_files f
+        group by tablespace_name) a,
+      ( select f.tablespace_name,
+               sum(f.bytes) bytes_free
+        from dba_free_space f
+        group by tablespace_name) b,dba_tablespaces ts
+where a.tablespace_name = b.tablespace_name (+) and a.tablespace_name = ts.tablespace_name (+)
+union all
+select tablespace_name,status,CONTENTS,EXTENT_MANAGEMENT,SEGMENT_SPACE_MANAGEMENT,
+       round(sum(AllowUseSize_MB),2) megs_alloc,
+       round(sum(FreeSize_MB),2) megs_free,
+       round(sum(UsedSize_MB),2) megs_used,
+       round(sum(MaxSize_MB),2) max
+ from
+  ( select ts.status,ts.CONTENTS,ts.EXTENT_MANAGEMENT,ts.SEGMENT_SPACE_MANAGEMENT,d.tablespace_name, d.file_name,
+         round(decode(d.autoextensible, 'YES', greatest(d.maxbytes, d.bytes), d.bytes)/1024/1024,2) MaxSize_MB,
+         round(d.bytes/1024/1024,2) AllowUseSize_MB,
+         nvl(round((d.bytes-p.bytes_cached)/1024/1024,2),0) FreeSize_MB,
+         nvl(round(p.bytes_cached/1024/1024,2),0) UsedSize_MB
+   -- nvl(round((decode(d.autoextensible, 'YES', greatest(d.maxbytes, d.bytes), d.bytes) - p.bytes_cached)/1024/1024,2),0)
+    from dba_temp_files d, v$temp_extent_pool p, dba_tablespaces ts
+   where d.tablespace_name = p.tablespace_name(+)
+     and d.file_id = p.file_id(+)
+     and d.tablespace_name = ts.tablespace_name(+))
+  group by tablespace_name,status,CONTENTS,EXTENT_MANAGEMENT,SEGMENT_SPACE_MANAGEMENT)
+order by 2;
