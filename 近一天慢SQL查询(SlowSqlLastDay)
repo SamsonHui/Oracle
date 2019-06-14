@@ -1,0 +1,62 @@
+WITH Q
+     AS (SELECT INSTANCE_NUMBER,
+                ROUND (NVL ( (SQT.ELAP / 1000000), TO_NUMBER (NULL)), 1)
+                   ELAPSED,
+                SQT.EXEC EXECS,
+                ROUND (
+                   DECODE (SQT.EXEC,
+                           0, TO_NUMBER (NULL),
+                           (SQT.ELAP / SQT.EXEC / 1000000)),
+                   2)
+                   SECONDS_PER_TRANS,
+                SQT.SQL_ID,
+                TO_CLOB (
+                   DECODE (SQT.MODULE, NULL, NULL, 'Module: ' || SQT.MODULE))
+                   SQL_MODULE,
+                NVL (ST.SQL_TEXT, TO_CLOB (' ** SQL Text Not Available ** '))
+                   SQL_TEXT
+           FROM (  SELECT INSTANCE_NUMBER,
+                          SQL_ID,
+                          MAX (MODULE) MODULE,
+                          SUM (ELAPSED_TIME_DELTA) ELAP,
+                          SUM (CPU_TIME_DELTA) CPUT,
+                          SUM (EXECUTIONS_DELTA) EXEC
+                     FROM DBA_HIST_SQLSTAT
+                    WHERE     (SELECT SNAP_ID
+                                 FROM DBA_HIST_SNAPSHOT
+                                WHERE     INSTANCE_NUMBER = 1
+                                      AND TO_CHAR (BEGIN_INTERVAL_TIME,
+                                                   'yyyymmddhh24') =
+                                             TO_CHAR (TRUNC (SYSDATE - 1),
+                                                      'yyyymmddhh24')) <
+                                 SNAP_ID
+                          AND SNAP_ID <=
+                                 (SELECT SNAP_ID
+                                    FROM DBA_HIST_SNAPSHOT
+                                   WHERE     INSTANCE_NUMBER = 1
+                                         AND TO_CHAR (BEGIN_INTERVAL_TIME,
+                                                      'yyyymmddhh24') =
+                                                TO_CHAR (TRUNC (SYSDATE),
+                                                         'yyyymmddhh24'))
+                 GROUP BY INSTANCE_NUMBER, SQL_ID) SQT,
+                DBA_HIST_SQLTEXT ST
+          WHERE     ST.SQL_ID(+) = SQT.SQL_ID
+                AND ROUND (
+                       DECODE (SQT.EXEC,
+                               0, TO_NUMBER (NULL),
+                               (SQT.ELAP / SQT.EXEC / 1000000)),
+                       2) > 0.5)
+  SELECT *
+    FROM (SELECT D.USERNAME,
+                 Q.*,
+                 ROW_NUMBER ()
+                    OVER (PARTITION BY Q.INSTANCE_NUMBER, Q.SQL_ID ORDER BY 1)
+                    RN
+            FROM Q
+                 LEFT JOIN GV$ACTIVE_SESSION_HISTORY S ON Q.SQL_ID = S.SQL_ID
+                 LEFT JOIN DBA_USERS D ON S.USER_ID = D.USER_ID)
+   WHERE     RN = 1
+         AND USERNAME IS NOT NULL
+         AND USERNAME NOT IN
+                ('SYS', 'DBSNMP','SYSTEM')
+ORDER BY SECONDS_PER_TRANS DESC;
