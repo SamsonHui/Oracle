@@ -1,0 +1,1 @@
+select name,state,type,total_mb/1024 as total_gb,free_mb/1024 as free_gb,free_mb/total_mb as free_rate from v$asm_diskgroup;
