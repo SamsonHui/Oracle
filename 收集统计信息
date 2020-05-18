@@ -1,0 +1,1 @@
+exec dbms_stats.gather_table_stats('$OWNER','$TABLE_NAME',ESTIMATE_PERCENT=>100,granularity=>'partition',cascade=> TRUE,degree=>4,method_opt=>'FOR ALL COLUMNS SIZE AUTO');
